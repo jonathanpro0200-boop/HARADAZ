@@ -1,0 +1,2087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Harada Mandala Chart</title>
+<script type="application/json" id="harada-save-data">{"chartIndex":[{"id":"chart-1","name":"My First Chart"}],"charts":{"chart-1":{}},"savedAt":null}</script>
+<style>
+  :root{
+    --void:#06060a;
+    --panel:#101019;
+    --panel-2:#14141f;
+    --line:rgba(255,255,255,.07);
+    --line-strong:rgba(255,255,255,.16);
+    --text:#eef0f6;
+    --text-dim:#8b8da3;
+    --accent:#8f8ff2;
+    --accent-2:#ff8a3d;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --header-h: 132px;
+    --stage-size: min(82vw, calc((100vh - var(--header-h)) * 0.76));
+  }
+  @supports (height: 100dvh){
+    :root{ --stage-size: min(82vw, calc((100dvh - var(--header-h)) * 0.76)); }
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; margin:0; overscroll-behavior:none;}
+  body{
+    background:var(--void);
+    color:var(--text);
+    font-family:var(--sans);
+    position:relative;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    -webkit-text-size-adjust:100%;
+  }
+  button{font-family:inherit;}
+  .hidden{ display:none !important; }
+
+  /* ---------- particle backdrop (shared by both views) ---------- */
+  #particles{ position:fixed; inset:0; z-index:0; pointer-events:none; display:block; }
+
+  /* =========================================================
+     HEADER — brand + view switch + toolbar (row 1), chart nav (row 2).
+     Height is measured at runtime into --header-h so both views can
+     center themselves in exactly the space that's left underneath it.
+     ========================================================= */
+  #topHeader{
+    position:fixed; top:0; left:0; right:0; z-index:5;
+    background:linear-gradient(to bottom, rgba(6,6,10,.94), rgba(6,6,10,.8) 65%, rgba(6,6,10,0));
+    backdrop-filter:blur(6px);
+  }
+  .topbar{
+    display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:14px;
+    padding:calc(14px + env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
+  }
+  .brand{ justify-self:start; font-family:var(--mono); font-size:12.5px; letter-spacing:.14em; white-space:nowrap; font-weight:600; }
+  .brand em{ font-style:normal; color:var(--text-dim); font-weight:400; margin-left:8px; letter-spacing:.04em; }
+
+  .topbar-actions{ justify-self:end; display:flex; align-items:center; gap:10px; flex-wrap:nowrap; }
+  .toolbar-btn{
+    flex-shrink:0; background:rgba(255,255,255,.06); border:1px solid var(--line-strong);
+    color:var(--text); padding:7px 13px; border-radius:8px; touch-action:manipulation;
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.03em; cursor:pointer; transition:.2s;
+  }
+  .toolbar-btn:hover{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .badge{
+    font-family:var(--mono); font-size:10px; letter-spacing:.03em; color:#ffb454;
+    background:rgba(255,159,67,.12); border:1px solid rgba(255,159,67,.32);
+    padding:4px 9px; border-radius:20px; white-space:nowrap; flex-shrink:0;
+    max-width:32vw; overflow:hidden; text-overflow:ellipsis;
+  }
+  .badge.badge-ok{ color:#7cfc9e; background:rgba(124,252,158,.10); border-color:rgba(124,252,158,.28); }
+
+  /* ---------- view switch: a two-way capsule with a sliding highlight ---------- */
+  .view-switch{
+    justify-self:center; position:relative; display:inline-flex;
+    background:rgba(255,255,255,.045); border:1px solid var(--line-strong);
+    border-radius:999px; padding:3px; gap:2px;
+  }
+  .view-switch-thumb{
+    position:absolute; top:3px; left:0; bottom:3px; border-radius:999px;
+    background:linear-gradient(120deg, var(--accent), var(--accent-2));
+    box-shadow:0 6px 18px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.08) inset;
+    transition:transform .32s cubic-bezier(.65,0,.35,1), width .32s cubic-bezier(.65,0,.35,1);
+    z-index:0; will-change:transform;
+  }
+  .view-btn{
+    position:relative; z-index:1; border:none; background:none; cursor:pointer;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-dim); padding:8px 15px; border-radius:999px; white-space:nowrap;
+    touch-action:manipulation; transition:color .25s;
+  }
+  .view-btn.active{ color:#fff; font-weight:600; }
+  .view-btn:hover:not(.active){ color:var(--text); }
+
+  /* ---------- chart dock: a swipeable, coverflow-style row of chart tiles ---------- */
+  .chartbar{ display:flex; align-items:flex-start; justify-content:center; gap:4px; padding:2px 10px 16px; }
+  .dock-edge{
+    flex-shrink:0; width:24px; height:24px; margin-top:24px; border-radius:50%; border:none;
+    background:rgba(255,255,255,.05); color:var(--text-dim); font-size:14px; line-height:1;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    touch-action:manipulation; transition:.2s;
+  }
+  .dock-edge:hover{ background:rgba(255,255,255,.13); color:#fff; }
+  .dock-edge:disabled{ opacity:.2; cursor:default; }
+  .dock-edge:disabled:hover{ background:rgba(255,255,255,.05); color:var(--text-dim); }
+
+  .dock-track-wrap{
+    position:relative; overflow:hidden; touch-action:pan-y;
+    width:min(78vw, 460px); height:90px;
+    -webkit-mask-image:linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+            mask-image:linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  }
+  .dock-track{
+    display:flex; align-items:flex-start; gap:14px; padding:6px 0; will-change:transform;
+    transition:transform .38s cubic-bezier(.22,.85,.32,1);
+  }
+  .dock-track.dragging{ transition:none; }
+  .dock-tile{
+    flex:0 0 66px; width:66px; display:flex; flex-direction:column; align-items:center; gap:6px;
+    background:none; border:none; padding:2px 0; cursor:pointer; touch-action:manipulation;
+    transition:transform .38s cubic-bezier(.22,.85,.32,1), opacity .38s ease;
+  }
+  .dock-track.dragging .dock-tile{ transition:none; }
+  .dock-icon{
+    --tile-color: var(--accent);
+    width:44px; height:44px; border-radius:13px;
+    background:var(--panel); border:1px solid var(--line-strong);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--tile-color); transition:box-shadow .3s ease, border-color .3s ease;
+  }
+  .dock-icon svg{ width:21px; height:21px; }
+  .dock-tile-center .dock-icon{
+    box-shadow:0 0 0 1.5px var(--tile-color), 0 14px 28px rgba(0,0,0,.5);
+    border-color:transparent;
+  }
+  .dock-label{
+    font-family:var(--mono); font-size:10px; letter-spacing:.01em; color:var(--text-dim);
+    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    padding:1px 4px; border-radius:5px; outline:none; cursor:inherit;
+  }
+  .dock-tile-center .dock-label{ color:var(--text); }
+  .dock-label.editing{
+    white-space:normal; background:rgba(0,0,0,.55); box-shadow:0 0 0 1px var(--accent) inset;
+    cursor:text; max-width:130px;
+  }
+  .dock-tile-add .dock-icon{ border-style:dashed; color:var(--text-dim); background:rgba(255,255,255,.02); }
+  .dock-tile-add .dock-icon svg{ width:17px; height:17px; }
+  .dock-tile-add .dock-label{ color:var(--text-dim); }
+
+  /* ---------- icon / color customize modal ---------- */
+  .icon-modal{ max-width:320px; }
+  .icon-modal-preview{ display:flex; justify-content:center; margin:2px 0 18px; }
+  .icon-modal-preview .dock-icon{ width:56px; height:56px; box-shadow:0 0 0 1.5px var(--tile-color); border-color:transparent; }
+  .icon-modal-preview .dock-icon svg{ width:27px; height:27px; }
+  .icon-modal-section-label{
+    font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--text-dim); margin:0 0 8px;
+  }
+  .icon-modal-colors{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+  .icon-modal-color{
+    width:25px; height:25px; border-radius:50%; border:2px solid transparent; cursor:pointer;
+    padding:0; touch-action:manipulation; transition:transform .15s; flex-shrink:0;
+  }
+  .icon-modal-color:hover{ transform:scale(1.12); }
+  .icon-modal-color.selected{ border-color:#fff; box-shadow:0 0 0 2px rgba(0,0,0,.45); }
+  .icon-modal-color-custom{
+    width:25px; height:25px; border-radius:50%; cursor:pointer; padding:0; flex-shrink:0;
+    border:2px dashed var(--line-strong); position:relative; overflow:hidden;
+    background:conic-gradient(from 180deg,#e0798f,#f0a35c,#e0d15c,#4fbf8f,#3fc4bd,#6f93e8,#b48ce0,#e792b0,#e0798f);
+  }
+  .icon-modal-color-custom input[type="color"]{
+    position:absolute; inset:-4px; width:calc(100% + 8px); height:calc(100% + 8px);
+    opacity:0; cursor:pointer; border:none; padding:0;
+  }
+  .icon-modal-grid{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:20px;
+    max-height:190px; overflow-y:auto; padding-right:2px;
+  }
+  .icon-modal-icon-btn{
+    width:100%; aspect-ratio:1/1; border-radius:9px; border:1px solid var(--line);
+    background:rgba(255,255,255,.03); color:var(--text-dim); cursor:pointer; touch-action:manipulation;
+    display:flex; align-items:center; justify-content:center; transition:.15s;
+  }
+  .icon-modal-icon-btn svg{ width:16px; height:16px; }
+  .icon-modal-icon-btn:hover{ background:rgba(255,255,255,.09); color:var(--text); }
+  .icon-modal-icon-btn.selected{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .modal-btn-primary{ background:linear-gradient(120deg, var(--accent), var(--accent-2)); border-color:transparent; color:#fff; }
+  .modal-btn-primary:hover{ filter:brightness(1.1); }
+
+  /* =========================================================
+     VIEW PANES — identical centering mechanism for both views:
+     a fixed band under the header, scrollable if content overflows,
+     with the content margin:auto'd so it centers when it fits and
+     never clips its top edge when it doesn't. This is what keeps
+     both views "perfectly and consistently" centered.
+     ========================================================= */
+  .view-pane{
+    position:fixed; left:0; right:0; top:var(--header-h); bottom:0; z-index:1;
+    overflow:auto; -webkit-overflow-scrolling:touch;
+  }
+  #fullView{
+    /* Full View's stage is always clamped to fit (see --stage-size), and its
+       zoom effect deliberately scales the whole 9-block stage 3x so one block
+       fills the screen while the other 8 are pushed just off-screen. That
+       scaled box must be clipped, not become "content to scroll to" —
+       overflow:auto here was letting the browser scroll the pane away from
+       its centered position, leaving a blank view with a stray scrollbar. */
+    overflow:hidden;
+  }
+  .view-scroll{ min-height:100%; display:flex; }
+  .view-pane.pane-enter{ animation:paneIn .5s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes paneIn{ from{ opacity:0; transform:scale(.97) translateY(6px); } to{ opacity:1; transform:none; } }
+
+  /* ---------- shared goal styling (used by both the 9x9 stage and the mini grids) ---------- */
+  .goal{ cursor:pointer; }
+  .sub-0{ background:linear-gradient(135deg,#c23b5a,#7d1f3d); }
+  .sub-1{ background:linear-gradient(135deg,#e08a3c,#a85a1e); }
+  .sub-2{ background:linear-gradient(135deg,#2f9e6e,#14523a); }
+  .sub-3{ background:linear-gradient(135deg,#3f6fd9,#1c3a7a); }
+  .sub-5{ background:linear-gradient(135deg,#8a5cd6,#4a2a82); }
+  .sub-6{ background:linear-gradient(135deg,#1fa6a0,#0d5652); }
+  .sub-7{ background:linear-gradient(135deg,#d9598f,#7c2c50); }
+  .sub-8{ background:linear-gradient(135deg,#4a8fd9,#22456f); }
+  .main-goal{
+    background:linear-gradient(135deg,#ffcf7a,#ff8a3d 55%,#e0502e);
+    animation:beacon 3.2s ease-in-out infinite;
+  }
+  @keyframes beacon{
+    0%,100%{ box-shadow:0 0 0 1px rgba(255,255,255,.18) inset, 0 0 22px rgba(255,138,61,.35); }
+    50%{ box-shadow:0 0 0 1px rgba(255,255,255,.3) inset, 0 0 36px rgba(255,138,61,.6); }
+  }
+
+  /* =========================================================
+     FULL VIEW — the zoomable 9x9 mandala stage
+     ========================================================= */
+  #fullView .view-scroll{ align-items:center; justify-content:center; }
+  .scene{ margin:auto; perspective:1400px; }
+  .viewport{ transform-style:preserve-3d; }
+  .stage{
+    width:var(--stage-size); aspect-ratio:1/1;
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    gap:5px; background:var(--line-strong);
+    border-radius:18px; overflow:hidden;
+    box-shadow:0 40px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
+    transition:transform .85s cubic-bezier(.65,0,.35,1);
+  }
+  .block{
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    gap:2px; background:rgba(255,255,255,.05);
+  }
+  .block.unfocused{ filter:blur(3.5px) brightness(.42) saturate(.75); transition:filter .75s cubic-bezier(.65,0,.35,1); }
+  .block.focused{ filter:none; }
+
+  .cell{ position:relative; background:var(--panel); touch-action:manipulation; }
+  .cell:hover{ filter:brightness(1.08); }
+  .cell.goal:active{ filter:brightness(1.18); }
+  .cell:focus-within{ box-shadow:0 0 0 2px rgba(255,255,255,.4) inset; border-radius:3px; }
+
+  .cell-text{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    padding:5px 8px;
+    font-size:clamp(8px, 1.05vw, 12.5px);
+    font-weight:500; line-height:1.28; text-align:center; outline:none;
+    color:var(--text); white-space:normal; overflow:hidden;
+    word-break:break-word; overflow-wrap:break-word;
+    cursor:default;
+  }
+  .cell.goal .cell-text{ color:#fff; font-weight:650; text-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .block.focused .cell.goal .cell-text{ padding-right:24px; }
+  .cell-text[contenteditable="true"]{ cursor:text; }
+  .cell-text:empty:before{ content:attr(data-ph); opacity:.4; font-weight:400; }
+  .cell.goal .cell-text:empty:before{ opacity:.6; }
+
+  .settled-layer{
+    position:fixed; z-index:2; pointer-events:none;
+    top:calc(var(--header-h) + (100% - var(--header-h)) / 2); left:50%;
+    width:var(--stage-size); aspect-ratio:1/1; transform:translate(-50%,-50%);
+    border-radius:18px; overflow:hidden;
+  }
+  .settled-layer > .block{ width:100%; height:100%; pointer-events:auto; animation:settleIn .16s ease both; }
+  @keyframes settleIn{ from{ opacity:.7; } to{ opacity:1; } }
+  .settled-layer .cell-text{
+    white-space:normal; overflow-y:auto; overflow-x:hidden; text-overflow:clip;
+    word-break:break-word; font-size:17px; line-height:1.42;
+  }
+  .settled-layer .cell.goal .cell-text{ font-size:19px; }
+  .settled-layer .cell-text::-webkit-scrollbar{ width:4px; }
+  .settled-layer .cell-text::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:4px; }
+
+  .drill-btn{
+    position:absolute; top:4px; right:4px; z-index:2;
+    width:18px; height:18px; border-radius:50%; border:none;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.38); color:#fff; font-size:10.5px; line-height:1;
+    cursor:pointer; opacity:.55; touch-action:manipulation;
+    transition:opacity .2s, transform .2s, background .2s;
+  }
+  .drill-btn:hover{ opacity:1; background:rgba(0,0,0,.6); transform:scale(1.18); }
+  .drill-btn:focus-visible{ outline:2px solid #fff; outline-offset:1px; }
+  .stage:not(.zoomed) .drill-btn{ display:none; }
+  .stage.zoomed .block:not(.focused) .drill-btn{ display:none; }
+
+  #fullCompass{ position:fixed; left:0; right:0; top:var(--header-h); bottom:0; z-index:5; pointer-events:none; }
+  .nav-btn{
+    position:absolute; pointer-events:none;
+    width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(14,14,20,.55); border:1px solid var(--line-strong); color:#fff;
+    font-size:15px; cursor:pointer; backdrop-filter:blur(6px); touch-action:manipulation;
+    opacity:0; transform:translate(-50%,-50%) scale(.8);
+    transition:opacity .3s, transform .3s, background .2s;
+  }
+  .nav-btn.show{ opacity:.85; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
+  .nav-btn.show:hover{ opacity:1; background:var(--accent); border-color:var(--accent); }
+  #fullCompass .nav-n { top:calc(50% - var(--stage-size)/2); left:50%; }
+  #fullCompass .nav-s { top:calc(50% + var(--stage-size)/2); left:50%; }
+  #fullCompass .nav-w { top:50%; left:calc(50% - var(--stage-size)/2); }
+  #fullCompass .nav-e { top:50%; left:calc(50% + var(--stage-size)/2); }
+  #fullCompass .nav-nw{ top:calc(50% - var(--stage-size)/2); left:calc(50% - var(--stage-size)/2); }
+  #fullCompass .nav-ne{ top:calc(50% - var(--stage-size)/2); left:calc(50% + var(--stage-size)/2); }
+  #fullCompass .nav-sw{ top:calc(50% + var(--stage-size)/2); left:calc(50% - var(--stage-size)/2); }
+  #fullCompass .nav-se{ top:calc(50% + var(--stage-size)/2); left:calc(50% + var(--stage-size)/2); }
+
+  .back-btn{
+    position:fixed; top:calc(var(--header-h) + 14px); left:20px; z-index:5; touch-action:manipulation;
+    background:rgba(255,255,255,.06); border:1px solid var(--line-strong); color:#fff;
+    padding:8px 15px; border-radius:20px; font-family:var(--mono); font-size:12px;
+    letter-spacing:.03em; cursor:pointer; backdrop-filter:blur(6px); transition:.2s;
+  }
+  .back-btn:hover{ background:var(--accent); border-color:var(--accent); }
+  .breadcrumb{
+    position:fixed; top:calc(var(--header-h) + 14px); left:50%; transform:translateX(-50%); z-index:5;
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.03em; color:var(--text-dim);
+    background:rgba(255,255,255,.05); padding:7px 16px; border-radius:20px; border:1px solid var(--line);
+    max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  /* =========================================================
+     MIDDLE VIEW — two focused panels, side by side: Main Objective + Action Plan
+     ========================================================= */
+  #middleView .view-scroll{ align-items:flex-start; }
+  .planner{
+    margin:auto; position:relative;
+    display:flex; align-items:center; justify-content:center;
+    gap:56px; flex-wrap:wrap; padding:28px 24px;
+  }
+  .panel{ display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .panel-label{
+    font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--text-dim); text-align:center;
+  }
+  .panel-label b{ color:var(--text); font-weight:600; }
+  .panel-main{ opacity:.88; padding-top:6px; }
+  .panel-main .mini-grid-wrap{ width:270px; }
+  .panel-action .mini-grid-wrap{ width:370px; }
+
+  .mini-grid-wrap{ position:relative; aspect-ratio:1/1; }
+  .mini-grid{
+    position:absolute; inset:0;
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    gap:4px; background:var(--line-strong); border-radius:16px; overflow:hidden;
+    box-shadow:0 25px 70px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04);
+    transition:opacity .16s ease, transform .16s ease;
+  }
+  .mcell{ position:relative; background:var(--panel); }
+  .mcell:hover{ filter:brightness(1.08); }
+  .mcell:focus-within{ box-shadow:0 0 0 2px rgba(255,255,255,.4) inset; }
+  .mcell-text{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    padding:7px 9px; text-align:center; outline:none; color:var(--text);
+    font-size:13.5px; line-height:1.35;
+    overflow-y:auto; overflow-x:hidden; word-break:break-word;
+    cursor:text;
+  }
+  .mcell-text::-webkit-scrollbar{ width:4px; }
+  .mcell-text::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:4px; }
+  .mcell-text:empty:before{ content:attr(data-ph); opacity:.4; }
+  .mcell.goal .mcell-text{ color:#fff; font-weight:650; text-shadow:0 1px 3px rgba(0,0,0,.4); font-size:14.5px; }
+  .mcell.goal .mcell-text:empty:before{ opacity:.6; }
+
+  .mcell.pick{ cursor:pointer; }
+  .mcell.pick .mcell-text{ cursor:pointer; pointer-events:none; }
+  .mcell.pick::after{
+    content:'↗'; position:absolute; top:5px; right:6px; font-size:10.5px; color:#fff;
+    opacity:.32; pointer-events:none; transition:opacity .2s;
+  }
+  .mcell.pick:hover::after{ opacity:.85; }
+  .mcell.pick.selected{ box-shadow:0 0 0 2px #fff inset, 0 0 22px rgba(255,255,255,.22); }
+
+  .compass{ position:absolute; inset:0; pointer-events:none; }
+  .compass .nav-btn{
+    width:32px; height:32px; margin:-16px 0 0 -16px; position:absolute;
+  }
+  .compass .nav-n{ top:0%; left:50%; }
+  .compass .nav-s{ top:100%; left:50%; }
+  .compass .nav-w{ top:50%; left:0%; }
+  .compass .nav-e{ top:50%; left:100%; }
+  .compass .nav-nw{ top:0%; left:0%; }
+  .compass .nav-ne{ top:0%; left:100%; }
+  .compass .nav-sw{ top:100%; left:0%; }
+  .compass .nav-se{ top:100%; left:100%; }
+
+  /* ---------- hints (pinned to the bottom, outside the centered content in both views) ---------- */
+  .hint{
+    position:fixed; left:50%; transform:translateX(-50%); z-index:5;
+    bottom:calc(16px + env(safe-area-inset-bottom)); pointer-events:none;
+    font-family:var(--mono); font-size:11px; letter-spacing:.02em; color:var(--text-dim);
+    text-align:center; max-width:min(92vw, 560px); line-height:1.55;
+  }
+
+  /* ---------- confirm/alert modal ---------- */
+  .modal-backdrop{
+    position:fixed; inset:0; z-index:20;
+    background:rgba(4,4,8,.65); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+    animation:modalFade .18s ease both;
+  }
+  @keyframes modalFade{ from{ opacity:0; } to{ opacity:1; } }
+  .modal{
+    background:var(--panel-2); border:1px solid var(--line-strong); border-radius:16px;
+    padding:22px 24px; max-width:360px; width:100%;
+    box-shadow:0 30px 80px rgba(0,0,0,.6);
+    animation:modalIn .22s cubic-bezier(.2,.9,.3,1.2) both;
+  }
+  @keyframes modalIn{ from{ opacity:0; transform:scale(.94) translateY(8px); } to{ opacity:1; transform:scale(1) translateY(0); } }
+  .modal-text{ font-size:15px; font-weight:600; margin:0 0 6px; color:var(--text); line-height:1.4; }
+  .modal-subtext{ font-size:12.5px; color:var(--text-dim); margin:0 0 18px; line-height:1.45; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; }
+  .modal-btn{
+    font-family:var(--mono); font-size:12px; letter-spacing:.02em;
+    padding:8px 16px; border-radius:8px; border:1px solid var(--line-strong);
+    background:rgba(255,255,255,.05); color:var(--text); cursor:pointer; touch-action:manipulation;
+    transition:.2s;
+  }
+  .modal-btn:hover{ background:rgba(255,255,255,.12); }
+  .modal-btn-danger{ background:linear-gradient(135deg,#d9455f,#96233a); border-color:transparent; color:#fff; }
+  .modal-btn-danger:hover{ filter:brightness(1.12); }
+
+  .saved-flash{
+    position:fixed; z-index:6;
+    top:calc(var(--header-h) + 8px); right:calc(20px + env(safe-area-inset-right));
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.03em; color:#7cfc9e;
+    opacity:0; transition:opacity .35s; pointer-events:none;
+  }
+  .saved-flash.show{ opacity:1; }
+
+  /* =========================================================
+     RESPONSIVE
+     ========================================================= */
+  @media (max-width:640px){
+    :root{ --stage-size: min(94vw, calc((100vh - var(--header-h)) * 0.62)); }
+  }
+  @supports (height: 100dvh){
+    @media (max-width:640px){
+      :root{ --stage-size: min(94vw, calc((100dvh - var(--header-h)) * 0.62)); }
+    }
+  }
+  @media (max-width:640px){
+    .brand em{ display:none; }
+    .brand{ font-size:11px; }
+    .topbar{
+      grid-template-columns:1fr; row-gap:10px;
+      padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right));
+    }
+    .brand, .view-switch, .topbar-actions{ justify-self:center; }
+    .toolbar-btn .btn-label{ display:none; }
+    .toolbar-btn{ padding:7px 10px; }
+    .badge{ max-width:26vw; font-size:9px; }
+    .view-btn{ font-size:9.5px; padding:7px 11px; }
+
+    body.zoomed #topHeader{ transform:translateY(-100%); opacity:0; pointer-events:none; transition:transform .3s ease, opacity .3s ease; }
+    #topHeader{ transition:transform .3s ease, opacity .3s ease; }
+
+    .back-btn{ top:calc(14px + env(safe-area-inset-top)); left:14px; padding:7px 13px; font-size:11px; }
+    .breadcrumb{ top:calc(14px + env(safe-area-inset-top)); max-width:46vw; padding:6px 13px; }
+
+    .nav-btn{ width:30px; height:30px; font-size:13px; }
+    .cell-text{ padding:3px 4px; font-size:clamp(7px, 2.4vw, 10.5px); }
+
+    .dock-track-wrap{ width:min(84vw, 340px); height:78px; }
+    .dock-track{ gap:10px; }
+    .dock-tile{ flex-basis:56px; width:56px; }
+    .dock-icon{ width:38px; height:38px; border-radius:11px; }
+    .dock-icon svg{ width:18px; height:18px; }
+    .dock-label{ font-size:16px; } /* 16px keeps iOS Safari from auto-zooming when editing */
+    .dock-label:not(.editing){ font-size:9.5px; }
+    .dock-edge{ margin-top:19px; }
+
+    .planner{ gap:32px; padding:20px 20px 28px; }
+    .panel-main .mini-grid-wrap{ width:min(76vw,250px); }
+    .panel-action .mini-grid-wrap{ width:min(88vw,330px); }
+    .compass .nav-btn{ width:28px; height:28px; margin:-14px 0 0 -14px; font-size:12px; }
+    .mcell-text{ padding:5px 6px; font-size:12px; }
+    .mcell.goal .mcell-text{ font-size:12.5px; }
+    .hint{ font-size:10px; max-width:94vw; }
+  }
+</style>
+</head>
+<body id="artifacts-component-root-html">
+
+<canvas id="particles"></canvas>
+
+<header id="topHeader">
+  <div class="topbar">
+    <div class="brand">HARADA<em>Mandala Chart</em></div>
+
+    <div class="view-switch" id="viewSwitch">
+      <span class="view-switch-thumb" id="viewSwitchThumb"></span>
+      <button type="button" class="view-btn active" id="viewBtnFull" data-view="full">Full View Harada</button>
+      <button type="button" class="view-btn" id="viewBtnMiddle" data-view="middle">Middle Harada</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="toolbar-btn" id="saveFileBtn" type="button" aria-label="Save to file" title="Save (Ctrl/Cmd+S)">⬇<span class="btn-label"> Save</span></button>
+      <button class="toolbar-btn" id="loadFileBtn" type="button" aria-label="Load from file" title="Open a saved chart file">⬆<span class="btn-label"> Load</span></button>
+      <span class="badge hidden" id="storageBadge"></span>
+      <input type="file" id="loadFileInput" accept=".html,text/html" class="hidden">
+    </div>
+  </div>
+
+  <div class="chartbar">
+    <button type="button" class="dock-edge" id="dockPrevBtn" aria-label="Previous chart">‹</button>
+    <div class="dock-track-wrap" id="dockTrackWrap">
+      <div class="dock-track" id="dockTrack"></div>
+    </div>
+    <button type="button" class="dock-edge" id="dockNextBtn" aria-label="Next chart">›</button>
+  </div>
+</header>
+
+<!-- ============ FULL VIEW ============ -->
+<div class="view-pane" id="fullView">
+  <div class="view-scroll">
+    <div class="scene" id="scene">
+      <div class="viewport" id="viewport">
+        <div class="stage" id="stage"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<button type="button" class="back-btn hidden" id="backBtn">← Overview</button>
+<div class="breadcrumb hidden" id="breadcrumb"></div>
+<div class="settled-layer hidden" id="settledLayer"></div>
+<div id="fullCompass"></div>
+
+<!-- ============ MIDDLE VIEW ============ -->
+<div class="view-pane hidden" id="middleView">
+  <div class="view-scroll">
+    <div class="planner" id="planner">
+      <section class="panel panel-main">
+        <div class="panel-label">Main Objective</div>
+        <div class="mini-grid-wrap">
+          <div class="mini-grid" id="mainGrid"></div>
+        </div>
+      </section>
+
+      <section class="panel panel-action">
+        <div class="panel-label">Action Plan: <b id="actionTitle">Untitled</b></div>
+        <div class="mini-grid-wrap">
+          <div class="mini-grid" id="actionGrid"></div>
+          <div class="compass" id="middleCompass"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<p class="hint hidden" id="middleHint">Start by entering your Main Goal in the center. Then fill in the 8 sub-goals around it — click any sub-goal to open its action plan and fill in its 8 actions. Use the arrows on the action panel to jump to a neighboring sub-goal.</p>
+
+<div class="modal-backdrop hidden" id="confirmBackdrop">
+  <div class="modal" role="alertdialog" aria-modal="true">
+    <p class="modal-text" id="confirmText"></p>
+    <p class="modal-subtext" id="confirmSubtext"></p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn" id="confirmCancelBtn">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-danger" id="confirmOkBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="iconModalBackdrop">
+  <div class="modal icon-modal" role="dialog" aria-modal="true">
+    <p class="modal-text">Customize "<span id="iconModalChartName"></span>"</p>
+    <div class="icon-modal-preview"><span class="dock-icon" id="iconModalPreview"></span></div>
+    <div class="icon-modal-section-label">Color</div>
+    <div class="icon-modal-colors" id="iconModalColors"></div>
+    <div class="icon-modal-section-label">Icon</div>
+    <div class="icon-modal-grid" id="iconModalGrid"></div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-danger" id="iconModalDeleteBtn">Delete chart</button>
+      <button type="button" class="modal-btn modal-btn-primary" id="iconModalDoneBtn">Done</button>
+    </div>
+  </div>
+</div>
+
+<span class="saved-flash" id="savedFlash">saved</span>
+
+<script>
+(() => {
+'use strict';
+
+/* =========================================================
+   PARTICLE BACKDROP — a quiet constellation drifting behind the chart
+   ========================================================= */
+const canvas = document.getElementById('particles');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, particles = [];
+
+function resizeCanvas(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+function initParticles(){
+  const count = Math.min(90, Math.round((window.innerWidth * window.innerHeight) / 22000));
+  particles = Array.from({ length: count }, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    vx: (Math.random() - 0.5) * 0.22, vy: (Math.random() - 0.5) * 0.22,
+    r: Math.random() * 1.5 + 0.6
+  }));
+}
+window.addEventListener('resize', () => { resizeCanvas(); initParticles(); });
+resizeCanvas();
+initParticles();
+
+let mouseNX = 0, mouseNY = 0;
+window.addEventListener('mousemove', (e) => {
+  mouseNX = (e.clientX / window.innerWidth) - 0.5;
+  mouseNY = (e.clientY / window.innerHeight) - 0.5;
+});
+
+let pCurX = 0, pCurY = 0;
+function drawParticles(){
+  pCurX += (mouseNX - pCurX) * 0.04;
+  pCurY += (mouseNY - pCurY) * 0.04;
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(pCurX * 34, pCurY * 34);
+  for (const p of particles){
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < -20) p.x = W + 20; if (p.x > W + 20) p.x = -20;
+    if (p.y < -20) p.y = H + 20; if (p.y > H + 20) p.y = -20;
+  }
+  for (let i = 0; i < particles.length; i++){
+    for (let j = i + 1; j < particles.length; j++){
+      const a = particles[i], b = particles[j];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < 130){
+        ctx.strokeStyle = `rgba(150,155,255,${(1 - d / 130) * 0.14})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
+  }
+  ctx.fillStyle = 'rgba(190,195,255,.55)';
+  for (const p of particles){ ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  requestAnimationFrame(drawParticles);
+}
+requestAnimationFrame(drawParticles);
+
+/* =========================================================
+   HEADER HEIGHT — measured live so both views can center themselves
+   in exactly the space left underneath the header, at any width.
+   ========================================================= */
+const headerEl = document.getElementById('topHeader');
+function updateHeaderHeight(){
+  document.documentElement.style.setProperty('--header-h', headerEl.offsetHeight + 'px');
+}
+updateHeaderHeight();
+if (window.ResizeObserver){ new ResizeObserver(updateHeaderHeight).observe(headerEl); }
+else { window.addEventListener('resize', updateHeaderHeight); }
+
+/* =========================================================
+   DATA MODEL — one flat "block-cell" map per chart, shared by both
+   views (they're just two different renderings of the same chart).
+   Block 4 holds the Main Goal (cell 4) plus the 8 Sub-goals (the
+   other cells). Sub-goal i is mirrored as the center cell of block i,
+   where that sub-goal's 8 Actions live.
+   ========================================================= */
+const SUB_IDS = [0,1,2,3,5,6,7,8];
+const SUB_CLASS = { 0:'sub-0', 1:'sub-1', 2:'sub-2', 3:'sub-3', 5:'sub-5', 6:'sub-6', 7:'sub-7', 8:'sub-8' };
+
+let chartData = {};        // "b-c" -> text, plus a private "_selected" sub-goal index
+let selectedSubgoal = 0;   // which sub-goal's action plan Middle View is showing (never 4)
+const focusState = { focus: null }; // Full View's zoom target: null | 0-8
+
+/* =========================================================
+   CHART ICONS/COLORS — a small self-contained icon set (so saved files
+   stay portable offline — see the earlier "self-contained file" fix —
+   nothing here loads from an external icon CDN). Each value is raw SVG
+   inner-markup for a 24x24 viewBox, stroke-based so the color picker
+   can tint it via currentColor.
+   ========================================================= */
+const DOCK_ICONS = {
+  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.3"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  flag: '<path d="M5 21V3"/><path d="M5 4h12l-3.5 4L17 12H5"/>',
+  star: '<polygon points="12,3 14.6,9.1 21.3,9.7 16.2,14 17.8,20.6 12,17 6.2,20.6 7.8,14 2.7,9.7 9.4,9.1"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><polygon points="15.5,8.5 13.2,13.2 8.5,15.5 10.8,10.8"/>',
+  mountain: '<path d="M3 19h18L14.5 7 10 14l-2-2.4Z"/>',
+  rocket: '<path d="M12 2.5c2.8 2 3.8 5.8 3.6 9.6-1 1-2.2 1.7-3.6 1.7s-2.6-.7-3.6-1.7C8.2 8.3 9.2 4.5 12 2.5Z"/><path d="M9 12.8 6.3 15.5l.7 3.5 3.5-.7"/><path d="M15 12.8l2.7 2.7-.7 3.5-3.5-.7"/><circle cx="12" cy="8.5" r="1.3"/>',
+  flame: '<path d="M12 2.5c1.2 3.6-3 5-3 9.3a3.5 3.5 0 0 0 7 0c0-1.6-.6-2.4-.6-2.4s.4 2.4-1.2 3.1c1.4-2.8-1.3-4.2-2.2-7Z"/>',
+  leaf: '<path d="M20 4C10.5 4 4.5 9.7 4.5 18c8.5 0 14.5-5.7 14.5-14Z"/><path d="M4.5 19.5 12 12"/>',
+  sun: '<circle cx="12" cy="12" r="4.3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2.1 2.1M16.8 16.8l2.1 2.1M5.1 18.9l2.1-2.1M16.8 7.2l2.1-2.1"/>',
+  moon: '<path d="M20 14.2A8.4 8.4 0 1 1 9.8 4a6.9 6.9 0 0 0 10.2 10.2Z"/>',
+  heart: '<path d="M12 20.3 4.9 13a4.5 4.5 0 0 1 6.4-6.4l.7.7.7-.7a4.5 4.5 0 0 1 6.4 6.4Z"/>',
+  brain: '<path d="M9.5 4.2a2.8 2.8 0 0 0-2.7 2 2.8 2.8 0 0 0-1.6 4.8 2.8 2.8 0 0 0 1.6 4.8 2.8 2.8 0 0 0 2.7 2c.7 0 .8-.6.8-1.3V5.5c0-.7-.1-1.3-.8-1.3Z"/><path d="M14.5 4.2a2.8 2.8 0 0 1 2.7 2 2.8 2.8 0 0 1 1.6 4.8 2.8 2.8 0 0 1-1.6 4.8 2.8 2.8 0 0 1-2.7 2c-.7 0-.8-.6-.8-1.3V5.5c0-.7.1-1.3.8-1.3Z"/>',
+  book: '<path d="M4 5.3c2.2-1 5-1 8 0v14c-3-1-5.8-1-8 0Z"/><path d="M20 5.3c-2.2-1-5-1-8 0v14c3-1 5.8-1 8 0Z"/>',
+  lightbulb: '<path d="M9.3 18.2h5.4"/><path d="M10 21h4"/><path d="M12 3.2a5.8 5.8 0 0 0-3.4 10.5c.6.5.9 1.2.9 2h5a2.6 2.6 0 0 1 .9-2A5.8 5.8 0 0 0 12 3.2Z"/>',
+  trophy: '<path d="M8 4.5h8v4.7a4 4 0 0 1-8 0Z"/><path d="M8 5.5H5.3a2.8 2.8 0 0 0 2.9 4.6"/><path d="M16 5.5h2.7a2.8 2.8 0 0 1-2.9 4.6"/><path d="M12 13.2v3"/><path d="M9 20h6"/><path d="M9.8 16.5h4.4l.5 3.5H9.3Z"/>',
+  gem: '<path d="M6.3 3.5h11.4l3 5.8-8.7 11.2-8.7-11.2Z"/><path d="M2 9.3h20"/><path d="M8.7 3.5 12 9.3l3.3-5.8"/><path d="M12 9.3l-3 11.2M12 9.3l3 11.2"/>',
+  anchor: '<circle cx="12" cy="5.2" r="2"/><path d="M12 7.2v13.3"/><path d="M5 12.5H2.2a9.8 9.8 0 0 0 9.8 8.5 9.8 9.8 0 0 0 9.8-8.5H19"/><path d="M7 12.5h10"/>',
+  shield: '<path d="M12 3 19 6v6c0 5-3 7.8-7 9-4-1.2-7-4-7-9V6Z"/>',
+  wand: '<path d="M4 20 15.5 8.5"/><path d="M14 2.8 15 5l2.2 1-2.2 1-1 2.2-1-2.2L11 6l2.2-1Z"/><path d="M19 11.5l.6 1.2 1.2.6-1.2.6-.6 1.2-.6-1.2-1.2-.6 1.2-.6Z"/>',
+  dumbbell: '<rect x="2" y="10" width="3" height="4.5" rx="1"/><rect x="19" y="10" width="3" height="4.5" rx="1"/><path d="M5 12.2h14"/><rect x="6.3" y="8" width="2.2" height="8.5" rx="1"/><rect x="15.5" y="8" width="2.2" height="8.5" rx="1"/>',
+  briefcase: '<rect x="3" y="8" width="18" height="12" rx="2.2"/><path d="M8.3 8V6.2a2 2 0 0 1 2-2h3.4a2 2 0 0 1 2 2V8"/><path d="M3 13.3h18"/>',
+  palette: '<path d="M12 3.2a8.8 8.8 0 1 0 0 17.6c1.4 0 1.9-1 1.9-1.9 0-.5-.3-.9-.5-1.3-.3-.4-.4-.8 0-1.2.3-.4.9-.4 1.3-.4h1.8a2.9 2.9 0 0 0 2.9-2.9 7.7 7.7 0 0 0-7.4-9.9Z"/><circle cx="7.6" cy="10.6" r="1.1"/><circle cx="10.5" cy="7.2" r="1.1"/><circle cx="15" cy="8.1" r="1.1"/><circle cx="16.8" cy="12" r="1.1"/>',
+  camera: '<path d="M4.3 8h2.9l1.4-1.9h6.8L16.8 8h2.9a1 1 0 0 1 1 1v8.8a1 1 0 0 1-1 1H4.3a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.3"/>',
+  music: '<path d="M9 18V5.3L20 3.5v12.7"/><circle cx="6.5" cy="18" r="2.4"/><circle cx="17.5" cy="16.2" r="2.4"/>',
+  coffee: '<path d="M4.3 8h13v5a5 5 0 0 1-5 5H9.3a5 5 0 0 1-5-5Z"/><path d="M17.3 9h1.4a2.5 2.5 0 0 1 0 5h-1.4"/><path d="M7.3 3c0 1-1 1-1 2s1 1 1 2M11.3 3c0 1-1 1-1 2s1 1 1 2"/>',
+  home: '<path d="M4 11 12 4.2l8 6.8"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>',
+  pin: '<path d="M12 21.2s7-6.4 7-11.7a7 7 0 1 0-14 0c0 5.3 7 11.7 7 11.7Z"/><circle cx="12" cy="9.5" r="2.4"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2.2"/><path d="M3 10h18"/><path d="M8 3v4M16 3v4"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.3 1.9"/>',
+  code: '<path d="M9 8 4.2 12 9 16"/><path d="M15 8l4.8 4-4.8 4"/>',
+  layers: '<polygon points="12,3 21,8 12,13 3,8"/><path d="M3 13l9 5 9-5"/><path d="M3 17.5 12 22.5 21 17.5"/>',
+  zap: '<polygon points="13,2 4.3,13.5 11,13.5 10,22 19.7,10.2 13,10.2"/>',
+  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/>'
+};
+const DOCK_ICON_ORDER = Object.keys(DOCK_ICONS);
+const DOCK_DEFAULT_ICON_SEQUENCE = ['target','flag','star','compass','rocket','flame','leaf','mountain','gem','shield','trophy','anchor'];
+const DOCK_COLORS = ['#e0798f','#f0a35c','#e0d15c','#4fbf8f','#3fc4bd','#6f93e8','#b48ce0','#e792b0','#8f8ff2','#ff8a3d','#7cfc9e','#f3f3f8'];
+
+function iconMarkup(id){ return DOCK_ICONS[id] ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${DOCK_ICONS[id]}</svg>` : '';
+}
+function defaultIconFor(idx){ return DOCK_DEFAULT_ICON_SEQUENCE[idx % DOCK_DEFAULT_ICON_SEQUENCE.length]; }
+function defaultColorFor(idx){ return DOCK_COLORS[idx % DOCK_COLORS.length]; }
+
+/* =========================================================
+   CHART DOCK — a swipeable, coverflow-style strip that replaced the old
+   "‹ name ×  ›" pill. The active chart sits centered and enlarged; charts
+   further away shrink and fade, and anything past ~2 slots either side is
+   fully faded out (so at most 5 tiles read as "visible" at once) until a
+   swipe brings them into range. Works by translateX-ing the whole strip to
+   center the active tile, while each tile gets its own scale/opacity based
+   on (fractional, drag-aware) distance from the center slot.
+   ========================================================= */
+const dockTrackWrap = document.getElementById('dockTrackWrap');
+const dockTrack = document.getElementById('dockTrack');
+const dockPrevBtn = document.getElementById('dockPrevBtn');
+const dockNextBtn = document.getElementById('dockNextBtn');
+
+let dockTiles = [];       // [{ el, iconBtn, label, id, isAdd }], one per chart + one "add" tile
+let dockPitch = 80;       // px between tile centers, re-measured from the live DOM (varies by breakpoint)
+let dockDragPx = 0;       // live pointer-drag offset in px (0 when not dragging)
+
+function dockLerp(a, b, t){ t = Math.max(0, Math.min(1, t)); return a + (b - a) * t; }
+function dockTileScale(absOffset){
+  if (absOffset <= 1) return dockLerp(1.16, 0.92, absOffset);
+  if (absOffset <= 2) return dockLerp(0.92, 0.76, absOffset - 1);
+  if (absOffset <= 3) return dockLerp(0.76, 0.6, absOffset - 2);
+  return 0.6;
+}
+function dockTileOpacity(absOffset){
+  // Fully visible (opacity>0) only within +-2 slots of center — 5 tiles total —
+  // fading out completely by +-3, so anything further stays hidden until a
+  // swipe brings it into that range.
+  if (absOffset <= 1) return dockLerp(1, 0.8, absOffset);
+  if (absOffset <= 2) return dockLerp(0.8, 0.32, absOffset - 1);
+  if (absOffset <= 3) return dockLerp(0.32, 0, absOffset - 2);
+  return 0;
+}
+
+function createDockTile(item, isAdd){
+  const el = document.createElement('div');
+  el.className = 'dock-tile' + (isAdd ? ' dock-tile-add' : '');
+  if (!isAdd) el.dataset.id = item.id;
+
+  const iconBtn = document.createElement('span');
+  iconBtn.className = 'dock-icon';
+  if (isAdd){
+    iconBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  } else {
+    iconBtn.style.setProperty('--tile-color', item.color);
+    iconBtn.innerHTML = iconMarkup(item.icon);
+  }
+
+  const label = document.createElement('div');
+  label.className = 'dock-label';
+  label.textContent = isAdd ? 'New chart' : item.name;
+
+  el.appendChild(iconBtn);
+  el.appendChild(label);
+  return { el, iconBtn, label, id: isAdd ? null : item.id, isAdd };
+}
+
+// Reconciling rebuild: reuses existing tile elements for charts that still
+// exist (matched by id) so unrelated tiles keep their DOM identity and can
+// keep animating smoothly — only genuinely new/removed charts touch the DOM.
+// Safe to call on every switchChart(), not just when the chart list changes.
+function buildDockTiles(){
+  const have = new Map(dockTiles.map((t) => [t.isAdd ? '__add__' : t.id, t]));
+  const next = [];
+  chartIndex.forEach((item) => {
+    let tile = have.get(item.id);
+    if (tile){
+      tile.iconBtn.style.setProperty('--tile-color', item.color);
+      tile.iconBtn.innerHTML = iconMarkup(item.icon);
+      if (tile.label.contentEditable !== 'true') tile.label.textContent = item.name;
+    } else {
+      tile = createDockTile(item, false);
+    }
+    next.push(tile);
+  });
+  let addTile = have.get('__add__');
+  if (!addTile) addTile = createDockTile(null, true);
+  next.push(addTile);
+
+  dockTiles.forEach((t) => {
+    const key = t.isAdd ? '__add__' : t.id;
+    if (!next.includes(t) && t.el.parentNode) t.el.remove();
+  });
+  next.forEach((t) => dockTrack.appendChild(t.el));
+  dockTiles = next;
+
+  measureDockPitch();
+  layoutDock();
+}
+
+function measureDockPitch(){
+  const sample = dockTiles[0];
+  if (!sample || !sample.el.isConnected) return;
+  const gap = parseFloat(getComputedStyle(dockTrack).columnGap || getComputedStyle(dockTrack).gap || '14') || 14;
+  // offsetWidth (not getBoundingClientRect(), which reports the POST-transform
+  // rendered box) — tiles away from center are scale()'d down, so measuring
+  // via getBoundingClientRect() against a non-center tile under-measured the
+  // true tile width and threw off every downstream centering calculation.
+  const w = sample.el.offsetWidth;
+  if (w > 0) dockPitch = w + gap;
+}
+
+function layoutDock(){
+  if (!dockTiles.length) return;
+  const idx = currentChartPos();
+  if (idx < 0) return;
+
+  const wrapWidth = dockTrackWrap.clientWidth;
+  const tileWidth = dockTiles[0].el.offsetWidth || 66;
+  const baseTranslate = wrapWidth / 2 - tileWidth / 2 - idx * dockPitch;
+  dockTrack.style.transform = `translateX(${baseTranslate + dockDragPx}px)`;
+
+  const centerSlot = idx - dockDragPx / dockPitch;
+  dockTiles.forEach((tile, i) => {
+    const off = i - centerSlot;
+    const a = Math.abs(off);
+    tile.el.style.transform = `scale(${dockTileScale(a)})`;
+    tile.el.style.opacity = String(dockTileOpacity(a));
+    tile.el.style.zIndex = String(1000 - Math.round(a * 10));
+    tile.el.style.pointerEvents = dockTileOpacity(a) < 0.04 ? 'none' : '';
+    tile.el.classList.toggle('dock-tile-center', a < 0.5);
+  });
+
+  dockPrevBtn.disabled = idx <= 0;
+  dockNextBtn.disabled = idx >= chartIndex.length - 1;
+}
+
+let dockPointerId = null;
+let dockPointerStartX = 0, dockPointerStartY = 0;
+let dockDragging = false, dockMoved = false, dockDragStartIdx = 0;
+let dockPointerDownTarget = null;
+
+dockTrackWrap.addEventListener('pointerdown', (e) => {
+  if (e.button !== undefined && e.button !== 0) return;
+  // A label mid-rename needs normal text-editing clicks (position the
+  // cursor, drag-select) — don't hijack those into a carousel gesture.
+  if (e.target.closest && e.target.closest('.dock-label[contenteditable="true"]')) return;
+  dockPointerId = e.pointerId;
+  dockPointerStartX = e.clientX;
+  dockPointerStartY = e.clientY;
+  dockDragging = false;
+  dockMoved = false;
+  dockDragStartIdx = currentChartPos();
+  // Captured now, BEFORE setPointerCapture() below — once a pointer is
+  // captured, the browser retargets e.target on every later event for that
+  // pointer (pointermove, pointerup) to the capturing element itself, not
+  // whatever's actually under the finger. Reading e.target at pointerup
+  // would always yield dockTrackWrap, so .closest('.dock-tile') could never
+  // match and taps would silently do nothing.
+  dockPointerDownTarget = e.target;
+  dockTrackWrap.setPointerCapture(dockPointerId);
+});
+
+dockTrackWrap.addEventListener('pointermove', (e) => {
+  if (dockPointerId === null || e.pointerId !== dockPointerId) return;
+  const dx = e.clientX - dockPointerStartX;
+  const dy = e.clientY - dockPointerStartY;
+  if (!dockDragging){
+    if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+    if (Math.abs(dy) > Math.abs(dx)){ dockPointerId = null; return; } // vertical gesture — let it go
+    dockDragging = true;
+    dockTrack.classList.add('dragging');
+  }
+  dockMoved = true;
+  dockDragPx = dx;
+  layoutDock();
+  e.preventDefault();
+});
+
+function dockEndDrag(){
+  if (dockDragging){
+    const steps = Math.round(dockDragPx / dockPitch);
+    const newIdx = Math.max(0, Math.min(chartIndex.length - 1, dockDragStartIdx - steps));
+    dockDragPx = 0;
+    dockTrack.classList.remove('dragging');
+    switchChart(chartIndex[newIdx].id);
+  }
+  dockPointerId = null;
+  dockDragging = false;
+}
+
+dockTrackWrap.addEventListener('pointerup', (e) => {
+  if (dockPointerId === null || e.pointerId !== dockPointerId) return;
+  try { dockTrackWrap.releasePointerCapture(dockPointerId); } catch (err) {}
+  const wasDragging = dockDragging;
+  const wasMoved = dockMoved;
+  const target = dockPointerDownTarget;
+  dockEndDrag();
+  if (!wasDragging && !wasMoved) handleDockTileClick(target);
+});
+dockTrackWrap.addEventListener('pointercancel', () => {
+  dockDragPx = 0;
+  dockTrack.classList.remove('dragging');
+  dockPointerId = null;
+  dockDragging = false;
+  layoutDock();
+});
+
+function handleDockTileClick(target){
+  const tileEl = target.closest ? target.closest('.dock-tile') : null;
+  if (!tileEl) return;
+  const idx = dockTiles.findIndex((t) => t.el === tileEl);
+  if (idx === -1) return;
+  const tile = dockTiles[idx];
+  const isCenter = idx === currentChartPos();
+
+  if (tile.isAdd){ newChart(); return; }
+  if (!isCenter){ switchChart(tile.id); return; }
+  if (target.closest('.dock-label')) startRenameDockLabel(tile);
+  else openIconModal(tile.id);
+}
+
+function startRenameDockLabel(tile){
+  const label = tile.label;
+  label.contentEditable = 'true';
+  label.classList.add('editing');
+  label.focus();
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+dockTrack.addEventListener('keydown', (e) => {
+  const label = e.target.closest ? e.target.closest('.dock-label') : null;
+  if (!label || label.contentEditable !== 'true') return;
+  if (e.key === 'Enter'){ e.preventDefault(); label.blur(); }
+  if (e.key === 'Escape'){
+    e.preventDefault();
+    const tile = dockTiles.find((t) => t.label === label);
+    const item = tile && chartIndex.find((c) => c.id === tile.id);
+    label.textContent = item ? item.name : '';
+    label.blur();
+  }
+});
+dockTrack.addEventListener('focusout', async (e) => {
+  const label = e.target.closest ? e.target.closest('.dock-label') : null;
+  if (!label || label.contentEditable !== 'true') return;
+  label.contentEditable = 'false';
+  label.classList.remove('editing');
+  const tile = dockTiles.find((t) => t.label === label);
+  const item = tile && chartIndex.find((c) => c.id === tile.id);
+  if (!item) return;
+  const val = label.textContent.trim();
+  item.name = val || item.name;
+  label.textContent = item.name;
+  await sSet('chart-index', chartIndex);
+});
+
+dockPrevBtn.addEventListener('click', () => prevChart());
+dockNextBtn.addEventListener('click', () => nextChart());
+
+// Wheel/trackpad support: hovering the dock and scrolling steps one chart at
+// a time, in whichever direction reads as the larger delta (so both a plain
+// mouse wheel and a trackpad's horizontal two-finger swipe work naturally).
+// Cooldown-gated because a single trackpad gesture fires many small wheel
+// events — without it, one scroll would blow past several charts at once.
+let dockWheelLocked = false;
+dockTrackWrap.addEventListener('wheel', (e) => {
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (Math.abs(delta) < 4) return;
+  e.preventDefault();
+  if (dockWheelLocked) return;
+  dockWheelLocked = true;
+  if (delta > 0) nextChart(); else prevChart();
+  setTimeout(() => { dockWheelLocked = false; }, 220);
+}, { passive: false });
+
+let dockResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(dockResizeTimer);
+  dockResizeTimer = setTimeout(() => { measureDockPitch(); layoutDock(); }, 120);
+});
+
+/* ---------- icon / color picker modal ---------- */
+const iconModalBackdrop = document.getElementById('iconModalBackdrop');
+const iconModalChartNameEl = document.getElementById('iconModalChartName');
+const iconModalPreview = document.getElementById('iconModalPreview');
+const iconModalColors = document.getElementById('iconModalColors');
+const iconModalGrid = document.getElementById('iconModalGrid');
+const iconModalDeleteBtn = document.getElementById('iconModalDeleteBtn');
+const iconModalDoneBtn = document.getElementById('iconModalDoneBtn');
+let iconModalChartId = null;
+
+function openIconModal(id){
+  const item = chartIndex.find((c) => c.id === id);
+  if (!item) return;
+  iconModalChartId = id;
+  iconModalChartNameEl.textContent = item.name;
+  renderIconModalPreview(item);
+  renderIconModalColors(item);
+  renderIconModalGrid(item);
+  iconModalBackdrop.classList.remove('hidden');
+}
+function closeIconModal(){
+  iconModalBackdrop.classList.add('hidden');
+  iconModalChartId = null;
+}
+function renderIconModalPreview(item){
+  iconModalPreview.style.setProperty('--tile-color', item.color);
+  iconModalPreview.innerHTML = iconMarkup(item.icon);
+}
+function renderIconModalColors(item){
+  iconModalColors.innerHTML = '';
+  DOCK_COLORS.forEach((c) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'icon-modal-color' + (c.toLowerCase() === (item.color || '').toLowerCase() ? ' selected' : '');
+    b.style.background = c;
+    b.setAttribute('aria-label', 'Use this color');
+    b.addEventListener('click', () => applyIconModalChange(item, { color: c }));
+    iconModalColors.appendChild(b);
+  });
+  const customWrap = document.createElement('label');
+  customWrap.className = 'icon-modal-color-custom';
+  customWrap.title = 'Custom color';
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : '#8f8ff2';
+  input.addEventListener('input', () => applyIconModalChange(item, { color: input.value }));
+  customWrap.appendChild(input);
+  iconModalColors.appendChild(customWrap);
+}
+function renderIconModalGrid(item){
+  iconModalGrid.innerHTML = '';
+  DOCK_ICON_ORDER.forEach((iconId) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'icon-modal-icon-btn' + (iconId === item.icon ? ' selected' : '');
+    b.innerHTML = iconMarkup(iconId);
+    b.setAttribute('aria-label', iconId);
+    b.addEventListener('click', () => applyIconModalChange(item, { icon: iconId }));
+    iconModalGrid.appendChild(b);
+  });
+}
+async function applyIconModalChange(item, patch){
+  Object.assign(item, patch);
+  renderIconModalPreview(item);
+  renderIconModalColors(item);
+  renderIconModalGrid(item);
+  await sSet('chart-index', chartIndex);
+  const tile = dockTiles.find((t) => t.id === item.id);
+  if (tile){
+    tile.iconBtn.style.setProperty('--tile-color', item.color);
+    tile.iconBtn.innerHTML = iconMarkup(item.icon);
+  }
+}
+iconModalDoneBtn.addEventListener('click', closeIconModal);
+iconModalBackdrop.addEventListener('click', (e) => { if (e.target === iconModalBackdrop) closeIconModal(); });
+iconModalDeleteBtn.addEventListener('click', async () => {
+  const id = iconModalChartId;
+  closeIconModal();
+  if (id) await deleteChart(id);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !iconModalBackdrop.classList.contains('hidden')) closeIconModal();
+});
+
+function getCell(b, c){ return chartData[b + '-' + c] || ''; }
+
+function subgoalIndexFor(b, c){
+  if (b === 4 && c !== 4) return c;
+  if (b !== 4 && c === 4) return b;
+  return null;
+}
+
+function setCell(b, c, val){
+  chartData[b + '-' + c] = val;
+  let pb = null, pc = null;
+  if (b === 4 && c !== 4){ pb = c; pc = 4; }
+  else if (b !== 4 && c === 4){ pb = 4; pc = b; }
+  if (pb !== null){
+    chartData[pb + '-' + pc] = val;
+    document.querySelectorAll(`[data-block="${pb}"][data-cell="${pc}"].cell-text, [data-block="${pb}"][data-cell="${pc}"].mcell-text`)
+      .forEach((el) => { if (el.innerText !== val) el.innerText = val; });
+  }
+  const subIdx = subgoalIndexFor(b, c);
+  if (subIdx !== null && subIdx === selectedSubgoal) updateActionTitle();
+  scheduleSave();
+}
+
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (!t.classList) return;
+  if (!(t.classList.contains('cell-text') || t.classList.contains('mcell-text'))) return;
+  if (t.contentEditable !== 'true') return;
+  setCell(+t.dataset.block, +t.dataset.cell, t.innerText);
+});
+
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const isCell = t.classList && (t.classList.contains('cell-text') || t.classList.contains('mcell-text'));
+  if (!isCell || t.contentEditable !== 'true' || e.key !== 'Enter') return;
+  // Word-processor style: Enter drops to a new line within the same cell and
+  // keeps typing there, instead of exiting the cell (that used to make sense
+  // when overview cells were single-line-only; now that they wrap, losing
+  // focus on Enter would fight against writing multi-line notes in a cell).
+  e.preventDefault();
+  document.execCommand('insertLineBreak');
+});
+
+/* =========================================================
+   VIEW SWITCH — toggles which pane is visible; both panes read the
+   same chartData, so nothing is lost switching back and forth.
+   ========================================================= */
+let activeView = 'full';
+const fullViewEl = document.getElementById('fullView');
+const middleViewEl = document.getElementById('middleView');
+const middleHintEl = document.getElementById('middleHint');
+const fullCompassEl = document.getElementById('fullCompass');
+const backBtn = document.getElementById('backBtn');
+const breadcrumbEl = document.getElementById('breadcrumb');
+
+const viewSwitchEl = document.getElementById('viewSwitch');
+const viewSwitchThumb = document.getElementById('viewSwitchThumb');
+const viewBtnFull = document.getElementById('viewBtnFull');
+const viewBtnMiddle = document.getElementById('viewBtnMiddle');
+
+function positionThumb(){
+  const activeBtn = activeView === 'full' ? viewBtnFull : viewBtnMiddle;
+  const svRect = viewSwitchEl.getBoundingClientRect();
+  const btnRect = activeBtn.getBoundingClientRect();
+  viewSwitchThumb.style.width = btnRect.width + 'px';
+  viewSwitchThumb.style.transform = `translateX(${btnRect.left - svRect.left}px)`;
+}
+
+function playPaneEnter(el){
+  el.classList.remove('pane-enter');
+  void el.offsetWidth; // restart the animation even if it was just played
+  el.classList.add('pane-enter');
+}
+
+function setActiveView(view){
+  if (view === activeView) return;
+  const prev = activeView;
+  activeView = view;
+
+  fullViewEl.classList.toggle('hidden', view !== 'full');
+  fullCompassEl.classList.toggle('hidden', view !== 'full');
+  middleViewEl.classList.toggle('hidden', view !== 'middle');
+  middleHintEl.classList.toggle('hidden', view !== 'middle');
+  if (view !== 'full'){ backBtn.classList.add('hidden'); breadcrumbEl.classList.add('hidden'); }
+  else { backBtn.classList.toggle('hidden', focusState.focus === null); breadcrumbEl.classList.toggle('hidden', focusState.focus === null); }
+
+  // The zoomed-in block lives OUTSIDE #fullView (physically relocated into
+  // #settledLayer, a fixed, high-z-index overlay, for crisp text rendering —
+  // see settleFocusedBlock()). It must only be visible while Full View is
+  // actually the pane on screen AND a block is really settled there — see
+  // updateSettledLayerVisibility(), the single source of truth for this.
+  // Same for the body-level "zoomed" flag, which on mobile also hides the
+  // header — it must only apply while Full View is the visible pane, not
+  // just whenever it's zoomed.
+  updateSettledLayerVisibility();
+  document.body.classList.toggle('zoomed', view === 'full' && focusState.focus !== null);
+
+  viewSwitchEl.classList.toggle('view-middle', view === 'middle');
+  viewBtnFull.classList.toggle('active', view === 'full');
+  viewBtnMiddle.classList.toggle('active', view === 'middle');
+  positionThumb();
+
+  if (view === 'middle'){
+    // continuity: if Full View was zoomed into an actual sub-goal, open that one here too
+    if (prev === 'full' && focusState.focus !== null && focusState.focus !== 4){
+      selectedSubgoal = focusState.focus;
+    }
+    renderMainGrid();
+    renderActionGrid();
+    playPaneEnter(middleViewEl);
+  } else {
+    playPaneEnter(fullViewEl);
+  }
+}
+viewBtnFull.addEventListener('click', () => setActiveView('full'));
+viewBtnMiddle.addEventListener('click', () => setActiveView('middle'));
+window.addEventListener('resize', positionThumb);
+
+/* =========================================================
+   FULL VIEW — 9 blocks of 9 cells, zoom camera
+   ========================================================= */
+const stage = document.getElementById('stage');
+
+function getTargetForCell(b, c){ return (b === 4 && c !== 4) ? c : b; }
+
+function buildStage(){
+  stage.innerHTML = '';
+  for (let b = 0; b < 9; b++){
+    const blockEl = document.createElement('div');
+    blockEl.className = 'block';
+    blockEl.dataset.block = b;
+    blockEl.style.gridColumn = String((b % 3) + 1);
+    blockEl.style.gridRow = String(Math.floor(b / 3) + 1);
+
+    for (let c = 0; c < 9; c++){
+      const cellEl = document.createElement('div');
+      cellEl.dataset.block = b;
+      cellEl.dataset.cell = c;
+
+      let cls = 'cell';
+      let placeholder = 'Action';
+      if (b === 4){
+        cls += ' goal';
+        if (c === 4){ cls += ' main-goal'; placeholder = '✦ Main Goal'; }
+        else { cls += ' ' + SUB_CLASS[c]; placeholder = 'Sub-goal'; }
+      } else if (c === 4){
+        cls += ' goal ' + SUB_CLASS[b];
+        placeholder = 'Sub-goal';
+      }
+      cellEl.className = cls;
+
+      const txt = document.createElement('div');
+      txt.className = 'cell-text';
+      txt.contentEditable = 'false';
+      txt.spellcheck = false;
+      txt.dataset.block = b;
+      txt.dataset.cell = c;
+      txt.dataset.ph = placeholder;
+      txt.setAttribute('role', 'textbox');
+      txt.setAttribute('aria-multiline', 'true');
+      cellEl.appendChild(txt);
+
+      if (cellEl.classList.contains('goal')){
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'drill-btn';
+        btn.innerHTML = '⤢';
+        btn.setAttribute('aria-label', "Open this goal's 3x3 grid");
+        cellEl.appendChild(btn);
+      }
+      blockEl.appendChild(cellEl);
+    }
+    stage.appendChild(blockEl);
+  }
+}
+buildStage();
+
+function renderStage(){
+  stage.querySelectorAll('.cell-text').forEach((t) => {
+    t.innerText = getCell(+t.dataset.block, +t.dataset.cell);
+  });
+}
+
+const viewportEl = document.getElementById('viewport');
+let fCurX = 0, fCurY = 0;
+let fullParallaxDamp = 1;
+function fullParallaxLoop(){
+  fCurX += (mouseNX - fCurX) * 0.06;
+  fCurY += (mouseNY - fCurY) * 0.06;
+  const tx = fCurX * 18 * fullParallaxDamp, ty = fCurY * 14 * fullParallaxDamp;
+  const rx = -fCurY * 3 * fullParallaxDamp, ry = fCurX * 3 * fullParallaxDamp;
+  viewportEl.style.transform = `translate3d(${tx}px, ${ty}px, 0) rotateX(${rx}deg) rotateY(${ry}deg)`;
+  requestAnimationFrame(fullParallaxLoop);
+}
+requestAnimationFrame(fullParallaxLoop);
+
+document.addEventListener('focusin', (e) => {
+  if (e.target.classList && e.target.classList.contains('cell-text')) fullParallaxDamp = 0.15;
+});
+document.addEventListener('focusout', (e) => {
+  if (e.target.classList && e.target.classList.contains('cell-text')) fullParallaxDamp = 1;
+});
+
+function computeTransform(target){
+  if (target === null) return 'translate(0%,0%) scale(1)';
+  const row = Math.floor(target / 3), col = target % 3;
+  const cx = (col + 0.5) / 3, cy = (row + 0.5) / 3;
+  const tx = 3 * (0.5 - cx) * 100;
+  const ty = 3 * (0.5 - cy) * 100;
+  return `translate(${tx}%, ${ty}%) scale(3)`;
+}
+
+function setEditable(){
+  stage.querySelectorAll('.cell-text').forEach((t) => {
+    const b = +t.dataset.block;
+    t.contentEditable = (settledBlockEl && b === focusState.focus) ? 'true' : 'false';
+  });
+  settledLayer.querySelectorAll('.cell-text').forEach((t) => {
+    const b = +t.dataset.block;
+    t.contentEditable = (settledBlockEl && b === focusState.focus) ? 'true' : 'false';
+  });
+}
+
+function applyBlur(){
+  stage.querySelectorAll('.block').forEach((bl) => {
+    const b = +bl.dataset.block;
+    bl.classList.remove('unfocused', 'focused');
+    if (focusState.focus === null) return;
+    bl.classList.add(b === focusState.focus ? 'focused' : 'unfocused');
+  });
+}
+
+const FULL_NAV_DIRS = {
+  n:  (r, c) => (r > 0) ? (r - 1) * 3 + c : null,
+  s:  (r, c) => (r < 2) ? (r + 1) * 3 + c : null,
+  w:  (r, c) => (c > 0) ? r * 3 + (c - 1) : null,
+  e:  (r, c) => (c < 2) ? r * 3 + (c + 1) : null,
+  nw: (r, c) => (r > 0 && c > 0) ? (r - 1) * 3 + (c - 1) : null,
+  ne: (r, c) => (r > 0 && c < 2) ? (r - 1) * 3 + (c + 1) : null,
+  sw: (r, c) => (r < 2 && c > 0) ? (r + 1) * 3 + (c - 1) : null,
+  se: (r, c) => (r < 2 && c < 2) ? (r + 1) * 3 + (c + 1) : null
+};
+const NAV_ARROWS = { n:'↑', s:'↓', w:'←', e:'→', nw:'↖', ne:'↗', sw:'↙', se:'↘' };
+const NAV_LABEL  = { n:'up', s:'down', w:'left', e:'right', nw:'upper-left', ne:'upper-right', sw:'lower-left', se:'lower-right' };
+
+const fullNavButtons = {};
+Object.keys(NAV_ARROWS).forEach((dir) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'nav-btn nav-' + dir;
+  b.textContent = NAV_ARROWS[dir];
+  b.setAttribute('aria-label', 'Pan to the ' + NAV_LABEL[dir] + ' grid');
+  b.addEventListener('click', () => {
+    if (focusState.focus === null) return;
+    const row = Math.floor(focusState.focus / 3), col = focusState.focus % 3;
+    const t = FULL_NAV_DIRS[dir](row, col);
+    if (t !== null) focusBlock(t);
+  });
+  fullCompassEl.appendChild(b);
+  fullNavButtons[dir] = b;
+});
+
+function updateFullCompass(){
+  if (focusState.focus === null){
+    Object.values(fullNavButtons).forEach((b) => b.classList.remove('show'));
+    return;
+  }
+  const row = Math.floor(focusState.focus / 3), col = focusState.focus % 3;
+  Object.keys(FULL_NAV_DIRS).forEach((dir) => {
+    const t = FULL_NAV_DIRS[dir](row, col);
+    fullNavButtons[dir].classList.toggle('show', t !== null);
+  });
+}
+
+const settledLayer = document.getElementById('settledLayer');
+let settledBlockEl = null;
+
+// Single source of truth for the settled-layer overlay's visibility: it
+// should be visible only when it actually holds a block AND Full View is the
+// pane currently on screen. Previously this was set independently in a few
+// places (view switching, chart switching) with nothing to un-hide it again
+// once a *new* block got settled in the same view — leaving the overlay
+// stuck hidden, which looked like the whole zoomed grid had vanished.
+function updateSettledLayerVisibility(){
+  settledLayer.classList.toggle('hidden', !(activeView === 'full' && settledBlockEl !== null));
+}
+
+function releaseSettledBlock(){
+  if (!settledBlockEl) return;
+  stage.appendChild(settledBlockEl);
+  settledBlockEl = null;
+  updateSettledLayerVisibility();
+}
+function settleFocusedBlock(){
+  if (focusState.focus === null) return;
+  const fb = stage.querySelector(`.block[data-block="${focusState.focus}"]`);
+  if (!fb) return;
+  settledLayer.appendChild(fb);
+  settledBlockEl = fb;
+  updateSettledLayerVisibility();
+}
+
+function updateBreadcrumb(){
+  if (focusState.focus === null){ breadcrumbEl.classList.add('hidden'); return; }
+  breadcrumbEl.classList.remove('hidden');
+  const label = getCell(focusState.focus, 4).trim()
+    || (focusState.focus === 4 ? 'Main Goal' : 'Untitled sub-goal');
+  breadcrumbEl.textContent = (focusState.focus === 4 ? '✦ ' : '') + label;
+}
+
+function focusBlock(target){
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  releaseSettledBlock();
+  focusState.focus = target;
+
+  stage.style.willChange = 'transform';
+  stage.style.transform = computeTransform(target);
+  stage.classList.toggle('zoomed', target !== null);
+  document.body.classList.toggle('zoomed', target !== null);
+
+  applyBlur();
+  setEditable();
+  updateBreadcrumb();
+  updateFullCompass();
+  backBtn.classList.toggle('hidden', target === null);
+}
+
+stage.addEventListener('transitionend', (e) => {
+  if (e.target !== stage || e.propertyName !== 'transform') return;
+  stage.style.willChange = 'auto';
+  settleFocusedBlock();
+  setEditable();
+});
+
+document.addEventListener('click', (e) => {
+  if (activeView !== 'full') return;
+  const drillBtn = e.target.closest('.drill-btn');
+  const cellEl = e.target.closest('.cell.goal');
+  if (!cellEl) return;
+  const b = +cellEl.dataset.block, c = +cellEl.dataset.cell;
+  const target = getTargetForCell(b, c);
+
+  if (drillBtn){
+    e.preventDefault(); e.stopPropagation();
+    if (focusState.focus !== null && b !== focusState.focus) return;
+    if (target !== focusState.focus) focusBlock(target);
+    return;
+  }
+  if (focusState.focus !== null && b === focusState.focus) return;
+  if (target === focusState.focus) return;
+  focusBlock(target);
+});
+
+backBtn.addEventListener('click', () => focusBlock(null));
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || focusState.focus === null || activeView !== 'full') return;
+  const active = document.activeElement;
+  if (active && active.classList && active.classList.contains('cell-text')) return;
+  focusBlock(null);
+});
+
+/* =========================================================
+   MIDDLE VIEW — Main Objective panel + Action Plan panel
+   ========================================================= */
+const mainGridEl = document.getElementById('mainGrid');
+const actionGridEl = document.getElementById('actionGrid');
+const actionTitleEl = document.getElementById('actionTitle');
+const middleCompassEl = document.getElementById('middleCompass');
+const plannerEl = document.getElementById('planner');
+
+function makeMiniCell(block, cell, cls){
+  const wrap = document.createElement('div');
+  wrap.className = 'mcell ' + cls;
+  wrap.dataset.block = block;
+  wrap.dataset.cell = cell;
+  const txt = document.createElement('div');
+  txt.className = 'mcell-text';
+  txt.spellcheck = false;
+  txt.dataset.block = block;
+  txt.dataset.cell = cell;
+  wrap.appendChild(txt);
+  return { wrap, txt };
+}
+
+function renderMainGrid(){
+  mainGridEl.innerHTML = '';
+  for (let c = 0; c < 9; c++){
+    if (c === 4){
+      const { wrap, txt } = makeMiniCell(4, 4, 'goal main-goal');
+      txt.contentEditable = 'true';
+      txt.dataset.ph = '✦ Main Goal';
+      txt.innerText = getCell(4, 4);
+      mainGridEl.appendChild(wrap);
+    } else {
+      const { wrap, txt } = makeMiniCell(4, c, 'goal pick ' + SUB_CLASS[c] + (c === selectedSubgoal ? ' selected' : ''));
+      txt.contentEditable = 'false';
+      txt.dataset.ph = 'Sub-goal';
+      txt.innerText = getCell(4, c);
+      wrap.addEventListener('click', () => selectSubgoal(c));
+      wrap.tabIndex = 0;
+      wrap.setAttribute('role', 'button');
+      wrap.setAttribute('aria-label', 'Open action plan for this sub-goal');
+      wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); selectSubgoal(c); } });
+      mainGridEl.appendChild(wrap);
+    }
+  }
+}
+
+function renderActionGrid(){
+  actionGridEl.innerHTML = '';
+  for (let c = 0; c < 9; c++){
+    if (c === 4){
+      const { wrap, txt } = makeMiniCell(selectedSubgoal, 4, 'goal ' + SUB_CLASS[selectedSubgoal]);
+      txt.contentEditable = 'true';
+      txt.dataset.ph = 'Name this sub-goal';
+      txt.innerText = getCell(selectedSubgoal, 4);
+      actionGridEl.appendChild(wrap);
+    } else {
+      const { wrap, txt } = makeMiniCell(selectedSubgoal, c, '');
+      txt.contentEditable = 'true';
+      txt.dataset.ph = 'Action';
+      txt.innerText = getCell(selectedSubgoal, c);
+      actionGridEl.appendChild(wrap);
+    }
+  }
+  updateActionTitle();
+  updateMiddleCompass();
+}
+
+function updateActionTitle(){
+  actionTitleEl.textContent = getCell(4, selectedSubgoal).trim() || 'Untitled';
+}
+
+function selectSubgoal(idx){
+  if (idx === 4 || idx === null || idx === selectedSubgoal) return;
+  const oldRow = Math.floor(selectedSubgoal / 3), oldCol = selectedSubgoal % 3;
+  const newRow = Math.floor(idx / 3), newCol = idx % 3;
+  const dx = (newCol - oldCol) * 36, dy = (newRow - oldRow) * 36;
+
+  const grid = actionGridEl;
+  const targetChartData = chartData; // guard: bail out below if the chart changed mid-transition
+  grid.style.opacity = '0';
+  grid.style.transform = `translate(${-dx}px, ${-dy}px) scale(.96)`;
+  setTimeout(() => {
+    if (chartData !== targetChartData) return; // a different chart is active now — abandon
+    selectedSubgoal = idx;
+    chartData._selected = idx;
+    scheduleSave();
+    renderActionGrid();
+    mainGridEl.querySelectorAll('.mcell.pick').forEach((el) => {
+      el.classList.toggle('selected', +el.dataset.cell === idx);
+    });
+    grid.style.transition = 'none';
+    grid.style.transform = `translate(${dx}px, ${dy}px) scale(.96)`;
+    requestAnimationFrame(() => {
+      grid.style.transition = 'opacity .2s ease, transform .2s cubic-bezier(.2,.8,.2,1)';
+      grid.style.opacity = '1';
+      grid.style.transform = 'translate(0,0) scale(1)';
+    });
+  }, 150);
+}
+
+function getMiddleTarget(dir, from){
+  const row = Math.floor(from / 3), col = from % 3;
+  const t = FULL_NAV_DIRS[dir](row, col);
+  return (t === null || t === 4) ? null : t;
+}
+
+const middleNavButtons = {};
+Object.keys(NAV_ARROWS).forEach((dir) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'nav-btn nav-' + dir;
+  b.textContent = NAV_ARROWS[dir];
+  b.setAttribute('aria-label', 'Jump to the ' + NAV_LABEL[dir] + ' sub-goal');
+  b.addEventListener('click', () => selectSubgoal(getMiddleTarget(dir, selectedSubgoal)));
+  middleCompassEl.appendChild(b);
+  middleNavButtons[dir] = b;
+});
+function updateMiddleCompass(){
+  Object.keys(NAV_ARROWS).forEach((dir) => middleNavButtons[dir].classList.toggle('show', getMiddleTarget(dir, selectedSubgoal) !== null));
+}
+
+let mCurX = 0, mCurY = 0, middleParallaxDamp = 1;
+function middleParallaxLoop(){
+  mCurX += (mouseNX - mCurX) * 0.06;
+  mCurY += (mouseNY - mCurY) * 0.06;
+  plannerEl.style.transform = `translate3d(${mCurX * 14 * middleParallaxDamp}px, ${mCurY * 10 * middleParallaxDamp}px, 0)`;
+  requestAnimationFrame(middleParallaxLoop);
+}
+requestAnimationFrame(middleParallaxLoop);
+document.addEventListener('focusin', (e) => { if (e.target.classList && e.target.classList.contains('mcell-text')) middleParallaxDamp = 0.15; });
+document.addEventListener('focusout', (e) => { if (e.target.classList && e.target.classList.contains('mcell-text')) middleParallaxDamp = 1; });
+
+/* =========================================================
+   STORAGE — tiered: Anthropic's artifact storage, then localStorage,
+   then in-memory only as a last resort.
+   ========================================================= */
+const LS_PREFIX = 'harada-mandala:';
+const memoryStore = new Map();
+
+let hasLocalStorage = false;
+try {
+  const probe = '__harada_probe__';
+  window.localStorage.setItem(probe, '1');
+  window.localStorage.removeItem(probe);
+  hasLocalStorage = true;
+} catch (e) { hasLocalStorage = false; }
+
+let storageMode = hasLocalStorage ? 'local' : 'memory';
+
+async function detectStorageMode(){
+  const structurallyPresent = !!(window.storage && typeof window.storage.get === 'function');
+  if (structurallyPresent){
+    try {
+      const probeCall = window.storage.get('__harada_cloud_probe__', false);
+      // A real bridge answers in single-digit milliseconds; this timeout only
+      // ever fires when window.storage exists but nothing is actually behind
+      // it. It used to be 1.5s, and since this whole check blocks the first
+      // render (dock included), that made the entire UI feel slow to appear
+      // whenever it hit the timeout path.
+      const timeout = new Promise((resolve) => setTimeout(() => resolve('__timeout__'), 300));
+      const result = await Promise.race([probeCall.then(() => 'answered', () => 'answered'), timeout]);
+      if (result === 'answered'){ storageMode = 'cloud'; return; }
+    } catch (e) { /* fall through to the local/memory default already set above */ }
+  }
+}
+
+const hasFSAccess = typeof window.showSaveFilePicker === 'function';
+let fileHandle = null;
+
+function updateSaveBadge(){
+  const badge = document.getElementById('storageBadge');
+  if (fileHandle){
+    badge.textContent = 'Linked to file: ' + (fileHandle.name || 'file');
+    badge.classList.add('badge-ok');
+    badge.classList.remove('hidden');
+  } else if (storageMode === 'cloud'){
+    badge.classList.add('hidden');
+  } else if (storageMode === 'local'){
+    badge.textContent = 'Auto-saved locally';
+    badge.classList.add('badge-ok');
+    badge.classList.remove('hidden');
+  } else {
+    badge.textContent = 'Not saved — storage blocked';
+    badge.classList.remove('badge-ok');
+    badge.classList.remove('hidden');
+  }
+}
+
+async function sGet(key){
+  if (storageMode === 'cloud'){
+    try { const r = await window.storage.get(key, false); return r ? JSON.parse(r.value) : null; }
+    catch (e) { return null; }
+  }
+  if (storageMode === 'local'){
+    try { const v = window.localStorage.getItem(LS_PREFIX + key); return v ? JSON.parse(v) : null; }
+    catch (e) { return null; }
+  }
+  return memoryStore.has(key) ? JSON.parse(memoryStore.get(key)) : null;
+}
+async function sSet(key, val){
+  const str = JSON.stringify(val);
+  if (storageMode === 'cloud'){
+    try { await window.storage.set(key, str, false); return true; }
+    catch (e) { console.warn('save failed', e); return false; }
+  }
+  if (storageMode === 'local'){
+    try { window.localStorage.setItem(LS_PREFIX + key, str); return true; }
+    catch (e) { console.warn('save failed', e); return false; }
+  }
+  memoryStore.set(key, str);
+  return true;
+}
+async function sDelete(key){
+  if (storageMode === 'cloud'){ try { await window.storage.delete(key, false); } catch (e) {} }
+  else if (storageMode === 'local'){ try { window.localStorage.removeItem(LS_PREFIX + key); } catch (e) {} }
+  memoryStore.delete(key);
+}
+
+/* =========================================================
+   CONFIRM/ALERT MODAL — a themed replacement for native confirm()/alert()
+   ========================================================= */
+function showConfirm(opts){
+  const message = opts.message || '';
+  const subtext = opts.subtext || '';
+  const okLabel = opts.okLabel || 'OK';
+  const danger = opts.danger !== false;
+  const hideCancel = !!opts.hideCancel;
+
+  return new Promise((resolve) => {
+    const backdrop = document.getElementById('confirmBackdrop');
+    const textEl = document.getElementById('confirmText');
+    const subEl = document.getElementById('confirmSubtext');
+    const okBtn = document.getElementById('confirmOkBtn');
+    const cancelBtn = document.getElementById('confirmCancelBtn');
+
+    textEl.textContent = message;
+    subEl.textContent = subtext;
+    subEl.classList.toggle('hidden', !subtext);
+    okBtn.textContent = okLabel;
+    okBtn.classList.toggle('modal-btn-danger', danger);
+    cancelBtn.classList.toggle('hidden', hideCancel);
+    backdrop.classList.remove('hidden');
+    (hideCancel ? okBtn : cancelBtn).focus();
+
+    function cleanup(result){
+      backdrop.classList.add('hidden');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      backdrop.removeEventListener('click', onBackdropClick);
+      document.removeEventListener('keydown', onKeydown, true);
+      resolve(result);
+    }
+    function onOk(){ cleanup(true); }
+    function onCancel(){ cleanup(false); }
+    function onBackdropClick(e){ if (e.target === backdrop) cleanup(false); }
+    function onKeydown(e){
+      if (e.key === 'Escape'){ e.stopImmediatePropagation(); cleanup(false); }
+      if (e.key === 'Enter'){ e.stopImmediatePropagation(); cleanup(true); }
+    }
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    backdrop.addEventListener('click', onBackdropClick);
+    document.addEventListener('keydown', onKeydown, true);
+  });
+}
+function showAlert(message, subtext){
+  return showConfirm({ message, subtext, okLabel: 'OK', danger: false, hideCancel: true });
+}
+
+/* =========================================================
+   CHARTS — index of {id,name}; each chart's 81 cells stored flat.
+   The old tab strip is gone: a single < name > control cycles
+   through the same list, in the same order.
+   ========================================================= */
+let chartIndex = [];
+let currentId = null;
+let saveTimer = null;
+
+// The chart a pending save is FOR, captured at schedule time — not read from
+// the live `currentId`/`chartData` variables when the timer fires. Without
+// this, typing in chart A then switching to chart B inside the debounce
+// window would save chart B's (unchanged) data under B's key while A's fresh
+// edit — still only sitting in the old chartData object — never gets
+// written anywhere. Every path that discards the in-memory chartData
+// (switchChart, deleteChart, collectFullState) flushes this first.
+let dirtyId = null;
+let dirtyData = null;
+
+function uid(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+// Layer 1 of the dual-layer autosave: every edit lands here, debounced
+// ~500ms after the user stops typing.
+function scheduleSave(){
+  dirtyId = currentId;
+  dirtyData = chartData;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushPendingSave, 500);
+}
+
+// Writes whatever is currently marked dirty, then clears the flag. Safe to
+// call any number of times (a no-op once nothing is dirty), and always
+// resolves before the caller proceeds — so anything that's about to read
+// storage for a chart, or about to swap out `chartData`, can await this
+// first and be guaranteed not to see stale data.
+async function flushPendingSave(){
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if (!dirtyId) return;
+  const id = dirtyId, data = dirtyData;
+  dirtyId = null;
+  dirtyData = null;
+  await sSet('chart:' + id, data);
+  // Layer 2: a linked file (via the File System Access API) gets the same
+  // write, silently, with no picker — see saveToFile() for how it gets linked.
+  if (fileHandle){
+    try { await writeToHandle(fileHandle, await buildSaveHtml()); }
+    catch (e) { fileHandle = null; updateSaveBadge(); }
+  }
+  flashSaved();
+}
+
+// Best-effort synchronous fallback for moments an async write can't be
+// trusted to finish: the tab closing, a refresh, or the page being backgrounded
+// (especially on mobile, where beforeunload is unreliable). localStorage.setItem
+// is synchronous, so this is safe to run in those handlers; the File System
+// Access write is skipped here since it's async by nature — the normal
+// debounced flushPendingSave() already keeps a linked file caught up on every
+// prior edit, so at most the very last keystroke's file-write is deferred to
+// the next flush, never the localStorage copy.
+function flushPendingSaveSync(){
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if (!dirtyId) return;
+  const id = dirtyId, data = dirtyData;
+  dirtyId = null;
+  dirtyData = null;
+  try {
+    const str = JSON.stringify(data);
+    if (storageMode === 'local') window.localStorage.setItem(LS_PREFIX + 'chart:' + id, str);
+    else if (storageMode === 'cloud') window.storage.set('chart:' + id, str, false); // fire-and-forget
+    else memoryStore.set('chart:' + id, str);
+  } catch (e) { /* best effort only */ }
+}
+window.addEventListener('beforeunload', flushPendingSaveSync);
+window.addEventListener('pagehide', flushPendingSaveSync);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushPendingSaveSync();
+});
+let flashTimer = null;
+function flashSaved(){
+  const el = document.getElementById('savedFlash');
+  el.classList.add('show');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('show'), 900);
+}
+
+function readEmbeddedData(){
+  try {
+    const el = document.getElementById('harada-save-data');
+    if (!el) return null;
+    const parsed = JSON.parse(el.textContent || '{}');
+    if (!parsed || !Array.isArray(parsed.chartIndex) || parsed.chartIndex.length === 0) return null;
+    return parsed;
+  } catch (e) { return null; }
+}
+
+// Fills in icon/color for any chart entry that's missing them (a fresh
+// chart, or one loaded from a save/localStorage written before the dock
+// existed) so every tile always has something valid to render. Returns
+// whether anything actually changed, so callers only re-persist when needed.
+function ensureChartMeta(){
+  let changed = false;
+  chartIndex.forEach((item, i) => {
+    if (!item.icon || !DOCK_ICONS[item.icon]){ item.icon = defaultIconFor(i); changed = true; }
+    if (!item.color || !/^#[0-9a-f]{6}$/i.test(item.color)){ item.color = defaultColorFor(i); changed = true; }
+  });
+  return changed;
+}
+
+async function adoptState(data){
+  chartIndex = data.chartIndex;
+  ensureChartMeta();
+  const charts = data.charts || {};
+  for (const id of Object.keys(charts)) await sSet('chart:' + id, charts[id]);
+  await sSet('chart-index', chartIndex);
+}
+
+async function loadChartIndex(){
+  const stored = await sGet('chart-index');
+  if (stored && stored.length > 0){
+    chartIndex = stored;
+    if (ensureChartMeta()) await sSet('chart-index', chartIndex);
+    return;
+  }
+
+  const embedded = readEmbeddedData();
+  if (embedded){ await adoptState(embedded); return; }
+
+  const id = uid();
+  chartIndex = [{ id, name: 'My First Chart', icon: defaultIconFor(0), color: defaultColorFor(0) }];
+  await sSet('chart-index', chartIndex);
+  await sSet('chart:' + id, {});
+}
+
+/* ---- save-to-file / load-from-file ---- */
+async function collectFullState(){
+  await flushPendingSave();
+  const charts = {};
+  for (const item of chartIndex){
+    charts[item.id] = (item.id === currentId) ? chartData : ((await sGet('chart:' + item.id)) || {});
+  }
+  return { chartIndex, charts, savedAt: new Date().toISOString() };
+}
+
+async function buildSaveHtml(){
+  const state = await collectFullState();
+  const dataEl = document.getElementById('harada-save-data');
+  if (dataEl){
+    dataEl.textContent = JSON.stringify(state).replace(/<\/script/gi, (m) => '<\\/' + m.slice(2));
+  }
+  return '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+}
+
+async function writeToHandle(handle, html){
+  if (handle.queryPermission){
+    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') throw new Error('write permission not granted');
+  }
+  const writable = await handle.createWritable();
+  await writable.write(html);
+  await writable.close();
+}
+
+function downloadHtml(html){
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `harada-mandala-chart-${stamp}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+async function saveToFile(){
+  if (hasFSAccess){
+    if (!fileHandle){
+      try {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: 'harada-mandala-chart.html',
+          types: [{ description: 'Harada Mandala Chart', accept: { 'text/html': ['.html'] } }]
+        });
+        updateSaveBadge();
+      } catch (e) { return; }
+    }
+    try {
+      await writeToHandle(fileHandle, await buildSaveHtml());
+      flashSaved();
+      return;
+    } catch (e) {
+      fileHandle = null; updateSaveBadge();
+    }
+  }
+  downloadHtml(await buildSaveHtml());
+  flashSaved();
+}
+
+async function loadFromFile(file){
+  const text = await file.text();
+  const match = text.match(/<script type="application\/json" id="harada-save-data">([\s\S]*?)<\/script>/);
+  let data = null;
+  if (match){ try { data = JSON.parse(match[1]); } catch (e) { data = null; } }
+  if (!data || !Array.isArray(data.chartIndex) || data.chartIndex.length === 0){
+    await showAlert("Couldn't read that file.", 'Pick a chart file previously saved with the Save button.');
+    return false;
+  }
+  const ok = await showConfirm({
+    message: 'Replace your currently open charts?',
+    subtext: 'Loading this file will overwrite the charts open right now — save first if you want to keep them.',
+    okLabel: 'Load',
+    danger: true
+  });
+  if (!ok) return false;
+  await adoptState(data);
+  await switchChart(chartIndex[0].id);
+  return true;
+}
+
+async function loadFromFilePicker(){
+  if (!hasFSAccess){ loadFileInput.click(); return; }
+  let handle;
+  try {
+    [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'Harada Mandala Chart', accept: { 'text/html': ['.html'] } }]
+    });
+  } catch (e) { return; }
+  const file = await handle.getFile();
+  const loaded = await loadFromFile(file);
+  if (loaded){ fileHandle = handle; updateSaveBadge(); }
+}
+
+/* ---- switching / naming / adding / deleting charts ---- */
+async function switchChart(id){
+  await flushPendingSave();
+  currentId = id;
+  chartData = (await sGet('chart:' + id)) || {};
+  selectedSubgoal = SUB_IDS.includes(chartData._selected) ? chartData._selected : 0;
+
+  // A previously-zoomed block lives OUTSIDE #stage (physically relocated into
+  // #settledLayer for crisp rendering — see settleFocusedBlock()). Switching
+  // charts without putting it back left it floating on screen showing the
+  // OLD chart's text on top of the newly-rendered grid below — and since it
+  // wasn't inside #stage, renderStage()'s querySelectorAll('.cell-text')
+  // couldn't even reach it to refresh its content. Release it first.
+  releaseSettledBlock();
+  focusState.focus = null;
+  stage.classList.remove('zoomed');
+  document.body.classList.remove('zoomed');
+  stage.style.transform = 'translate(0%,0%) scale(1)';
+
+  renderStage();
+  applyBlur();
+  setEditable();
+  updateBreadcrumb();
+  updateFullCompass();
+  backBtn.classList.add('hidden');
+
+  renderMainGrid();
+  renderActionGrid();
+
+  buildDockTiles();
+}
+
+function currentChartPos(){ return chartIndex.findIndex((c) => c.id === currentId); }
+function prevChart(){
+  const i = currentChartPos();
+  if (i <= 0) return;
+  switchChart(chartIndex[i - 1].id);
+}
+function nextChart(){
+  const i = currentChartPos();
+  if (i === -1 || i >= chartIndex.length - 1) return;
+  switchChart(chartIndex[i + 1].id);
+}
+
+async function newChart(){
+  const id = uid();
+  const idx = chartIndex.length;
+  const name = 'Chart ' + (idx + 1);
+  chartIndex.push({ id, name, icon: defaultIconFor(idx), color: defaultColorFor(idx) });
+  await sSet('chart-index', chartIndex);
+  await sSet('chart:' + id, {});
+  await switchChart(id);
+}
+
+async function deleteChart(id){
+  const item = chartIndex.find((c) => c.id === id);
+  const name = item ? item.name : 'this chart';
+  if (chartIndex.length <= 1){
+    await showAlert('You need at least one chart.', `Create a new one before deleting "${name}".`);
+    return;
+  }
+  const ok = await showConfirm({
+    message: `Are you sure you want to delete "${name}"?`,
+    subtext: "This can't be undone.",
+    okLabel: 'Delete',
+    danger: true
+  });
+  if (!ok) return;
+  if (dirtyId === id){ clearTimeout(saveTimer); saveTimer = null; dirtyId = null; dirtyData = null; }
+  const pos = currentChartPos();
+  chartIndex = chartIndex.filter((c) => c.id !== id);
+  await sSet('chart-index', chartIndex);
+  await sDelete('chart:' + id);
+  if (currentId === id){
+    const next = chartIndex[Math.min(pos, chartIndex.length - 1)];
+    await switchChart(next.id);
+  } else {
+    buildDockTiles();
+  }
+}
+
+document.getElementById('saveFileBtn').addEventListener('click', saveToFile);
+
+const loadFileInput = document.getElementById('loadFileInput');
+document.getElementById('loadFileBtn').addEventListener('click', loadFromFilePicker);
+loadFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  loadFileInput.value = '';
+  if (file) loadFromFile(file);
+});
+
+document.addEventListener('keydown', (e) => {
+  const isSaveCombo = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S');
+  if (!isSaveCombo) return;
+  e.preventDefault();
+  saveToFile();
+});
+
+// Left/Right cycles charts, mirroring the dock's edge buttons — but never
+// while someone is actually typing into a cell, a chart's name, or a modal.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const t = document.activeElement;
+  const isEditing = t && ((t.classList && (t.classList.contains('cell-text') || t.classList.contains('mcell-text') || t.classList.contains('dock-label')) && t.contentEditable === 'true')
+    || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+  if (isEditing) return;
+  if (!document.getElementById('confirmBackdrop').classList.contains('hidden')) return;
+  if (!iconModalBackdrop.classList.contains('hidden')) return;
+  if (e.key === 'ArrowLeft') prevChart(); else nextChart();
+});
+
+(async function init(){
+  updateSaveBadge(); // instant best-guess (local/memory) — refined below if a cloud layer answers
+  await detectStorageMode();
+  updateSaveBadge();
+  await loadChartIndex();
+  await switchChart(chartIndex[0].id);
+  positionThumb();
+})();
+
+})();
+</script>
+</body>
+</html>
